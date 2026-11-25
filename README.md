@@ -1,15 +1,16 @@
 # Network Traffic Analyzer
 
-A Python-based network traffic analysis tool that reads PCAP files, extracts packet-level information, calculates network traffic statistics, detects potential TCP port-scanning activity, and generates security reports.
+A Python-based network traffic analysis tool that processes offline PCAP and PCAPNG files, extracts packet-level information, calculates network traffic statistics, detects potential TCP port-scanning activity, and generates security reports.
 
 ## Features
 
 - **PCAP Analysis:** Reads offline PCAP and PCAPNG captures using Scapy.
-- **Packet Inspection:** Extracts source IP, destination IP, transport protocol, source port, destination port, and packet length.
-- **Traffic Statistics:** Calculates protocol distribution, packet counts by source IP, total traffic volume, and most active source IP.
-- **Port-Scan Detection:** Identifies potential TCP port-scanning activity based on repeated SYN packets targeting multiple unique destination ports.
+- **Packet Inspection:** Extracts source IP, destination IP, protocol, source port, destination port, packet length, and TCP SYN information.
+- **Traffic Statistics:** Calculates protocol distribution, packet counts by source IP, total packet count, total traffic volume, and most active source IP.
+- **Port-Scan Detection:** Identifies potential TCP port-scanning activity based on initial SYN packets targeting multiple unique destination ports.
 - **Security Reports:** Generates a text-based report containing traffic statistics and potential security findings.
-- **Unit Testing:** Uses Python's unittest framework to verify application functionality.
+- **Synthetic Traffic Generation:** Creates sample PCAP files for testing normal traffic analysis and port-scan detection.
+- **Unit Testing:** Uses Python's `unittest` framework to verify application functionality.
 
 ## Project Structure
 
@@ -59,7 +60,7 @@ cd network-traffic-analyzer
 python -m venv .venv
 ```
 
-Activate it on Windows PowerShell:
+Activate the virtual environment on Windows PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -79,39 +80,43 @@ Run the analyzer:
 python src/traffic_analyzer.py
 ```
 
-By default, the application analyses:
+By default, the application analyzes:
 
 ```text
 data/sample_traffic.pcap
 ```
 
-To analyse another capture, change the `file_path` variable inside the `main()` function.
+To analyze a different capture, modify the PCAP file path configured in the `main()` function of `src/traffic_analyzer.py`.
+
+The analyzer processes the selected capture, calculates traffic statistics, checks for potential port-scanning activity, and generates a security report.
 
 ## Generate Synthetic PCAP Files
 
-The project includes a script to generate sample network traffic for testing.
+The project includes a script to generate synthetic network traffic for testing and demonstration.
 
 ```bash
 python src/create_sample_pcap.py
 ```
 
-This creates synthetic normal traffic and port-scan-like traffic captures in the `data/` directory.
+This generates sample PCAP files containing normal traffic patterns and port-scan-like activity in the `data/` directory.
 
-No packets are transmitted over a live network by this generator.
+The generated traffic is synthetic and is not transmitted over a live network.
 
 ## Port-Scan Detection Logic
 
-The application tracks TCP SYN packets by source IP and destination IP.
+The application tracks initial TCP SYN packets using source IP and destination IP pairs.
 
-It flags potential port-scanning activity when a source-destination pair communicates with 10 or more unique destination ports through TCP SYN packets.
+Potential port-scanning activity is flagged when a source-destination pair targets 10 or more unique destination ports through initial TCP SYN packets.
 
 The detection threshold can be customised through the `detect_port_scans()` function.
 
-This is a basic heuristic. The detection result is an indicator of potentially suspicious behaviour, not proof of a malicious attack.
+The analyzer excludes SYN-ACK packets from initial SYN-based scan tracking.
+
+This detection mechanism uses a threshold-based heuristic. A flagged result indicates potentially suspicious behaviour and does not establish that an actual malicious attack has occurred.
 
 ## Security Report
 
-The application generates:
+The application generates a text-based report at:
 
 ```text
 reports/security_report.txt
@@ -119,12 +124,12 @@ reports/security_report.txt
 
 The report includes:
 
-- Total packets analysed
+- Total packets analyzed
 - Protocol distribution
 - Packet counts by source IP
-- Total traffic volume
+- Total traffic volume in bytes
 - Most active source IP
-- Potential port-scan findings
+- Potential port-scanning findings
 
 ## Running Unit Tests
 
@@ -134,27 +139,32 @@ Run the complete test suite:
 python -m unittest discover -s tests -v
 ```
 
-The tests cover:
+The test suite covers:
 
-- TCP, UDP and ICMP packet analysis
+- TCP, UDP, ICMP and unknown protocol packet analysis
+- TCP SYN and SYN-ACK classification
 - Traffic statistics calculation
-- Port-scan detection and threshold behaviour
-- PCAP file loading and missing-file handling
+- Total packet and traffic volume calculations
+- Port-scan detection
+- Custom detection thresholds
+- PCAP loading
+- Missing and corrupted PCAP handling
 - Security report generation
 
 ## Limitations
 
-- Analyses offline packet captures only; does not perform live packet capture.
-- Port-scan detection uses a basic threshold-based heuristic.
-- Does not establish whether a flagged activity is malicious.
+- Analyzes offline packet captures only and does not perform live packet capture.
+- Port-scan detection relies on a basic threshold-based heuristic.
+- Detected activity is not automatically classified as malicious.
 - Does not perform deep packet inspection or comprehensive application-layer analysis.
+- Detection results depend on the quality and scope of the analyzed capture.
 
 ## Disclaimer
 
-This project is intended for educational and defensive cybersecurity purposes. Use only packet captures that you own or are authorised to analyse.
+This project is intended for educational and defensive cybersecurity purposes. Analyze only packet captures that you own or are authorized to examine.
 
 ## Author
 
-Adarsh Yadav
+**Adarsh Yadav**
 
-GitHub: https://github.com/yadarsh47-source
+GitHub: [yadarsh47-source](https://github.com/yadarsh47-source)

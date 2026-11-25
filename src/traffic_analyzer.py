@@ -1,4 +1,6 @@
-from scapy.all import rdpcap, IP, TCP, UDP, ICMP
+import io
+from pathlib import Path
+from scapy.all import IP, TCP, UDP, ICMP, PcapReader
 
 def detect_port_scans(port_scan_tracker, threshold=10):
 
@@ -21,12 +23,20 @@ def detect_port_scans(port_scan_tracker, threshold=10):
 
 def load_packets(file_path):
 
-    packets = rdpcap(file_path)
+    try:
+        with open(file_path, "rb") as capture_file:
+            file_data = capture_file.read()
 
-    return packets
+        with PcapReader(io.BytesIO(file_data)) as capture_reader:
+            packets = list(capture_reader)
 
-# Load the PCAP file
-packets = load_packets("data/sample_traffic.pcap")
+        return packets
+
+    except FileNotFoundError:
+        raise
+
+    except Exception as error:
+        raise ValueError(f"Invalid or corrupted PCAP file: {error}")
 
 
 def analyze_packets(packets):
@@ -46,7 +56,12 @@ def analyze_packets(packets):
             protocol = "TCP"
             source_port = packet[TCP].sport
             destination_port = packet[TCP].dport
-            is_syn = bool(int(packet[TCP].flags) & 0x02)
+            tcp_flags = int(packet[TCP].flags)
+
+            is_syn = bool(
+                (tcp_flags & 0x02) and
+                not (tcp_flags & 0x10)
+            )
 
         elif UDP in packet:
             protocol = "UDP"
@@ -89,6 +104,7 @@ def calculate_statistics(packet_records):
     source_ip_counts = {}
     port_scan_tracker = {}
     total_bytes = 0
+    total_packets = len(packet_records)
 
     for record in packet_records:
 
@@ -122,6 +138,7 @@ def calculate_statistics(packet_records):
             )
 
     return {
+        "total_packets": total_packets,
         "protocol_counts": protocol_counts,
         "source_ip_counts": source_ip_counts,
         "total_bytes": total_bytes,
@@ -131,14 +148,15 @@ def calculate_statistics(packet_records):
 
 def generate_report(statistics, suspicious_activity, output_path):
 
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
     with open(output_path, "w") as report:
 
         report.write("NETWORK TRAFFIC ANALYSIS REPORT\n")
         report.write("=" * 50 + "\n\n")
 
-        total_packets = sum(
-            statistics["protocol_counts"].values()
-        )
+        total_packets = statistics["total_packets"]
 
         report.write(f"Total Packets Analysed: {total_packets}\n")
 
@@ -194,13 +212,17 @@ def generate_report(statistics, suspicious_activity, output_path):
 
 def main():
 
-    file_path = "data/sample_port_scan.pcap"
+    file_path = "data/sample_traffic.pcap"
 
     try:
         packets = load_packets(file_path)
 
     except FileNotFoundError:
-        print("Error: PCAP file not found:", file_path)
+        print(f"Error: PCAP file not found: {file_path}")
+        return
+
+    except ValueError as error:
+        print(error)
         return
 
     if not packets:

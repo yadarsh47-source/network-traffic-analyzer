@@ -9,7 +9,7 @@ from src.traffic_analyzer import (
 import tempfile
 import os
 import unittest
-from scapy.all import IP, TCP, UDP, ICMP
+from scapy.all import IP, TCP, UDP, ICMP, GRE
 
 from src.traffic_analyzer import (
     analyze_packets,
@@ -62,6 +62,32 @@ class TestAnalyzePackets(unittest.TestCase):
         self.assertEqual(result[0]["source_port"], "N/A")
         self.assertEqual(result[0]["destination_port"], "N/A")
 
+    def test_analyze_syn_ack_packet(self):
+
+        packet = IP(src="192.168.1.1", dst="192.168.1.2") / TCP(
+            sport=443,
+            dport=51524,
+            flags="SA"
+        )
+
+        result = analyze_packets([packet])
+
+        self.assertFalse(result[0]["is_syn"])
+
+    def test_analyze_unknown_protocol(self):
+
+        packet = (
+            IP(src="192.168.1.40", dst="192.168.1.50") /
+            GRE()
+        )
+
+        result = analyze_packets([packet])
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["protocol"], "Other")
+        self.assertEqual(result[0]["source_ip"], "192.168.1.40")
+        self.assertEqual(result[0]["destination_ip"], "192.168.1.50")
+        self.assertFalse(result[0]["is_syn"])
 
 class TestCalculateStatistics(unittest.TestCase):
 
@@ -78,7 +104,9 @@ class TestCalculateStatistics(unittest.TestCase):
             TCP(sport=51525, dport=22, flags="S"),
 
             IP(src="192.168.1.10", dst="192.168.1.1") /
-            ICMP(type=8)
+            ICMP(type=8),
+
+            IP(src="192.168.1.40", dst="192.168.1.50") / GRE()
         ]
 
         packet_records = analyze_packets(packets)
@@ -109,6 +137,10 @@ class TestCalculateStatistics(unittest.TestCase):
 
         self.assertEqual(
             statistics["total_bytes"], expected_bytes
+        )
+
+        self.assertEqual(
+            statistics["total_packets"], 5
         )
 
 
@@ -183,12 +215,28 @@ class TestLoadPackets(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             load_packets("data/nonexistent.pcap")
 
+    def test_load_corrupted_pcap(self):
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+
+            temp_file_path = os.path.join(
+                temp_dir,
+                "corrupted.pcap"
+            )
+
+            with open(temp_file_path, "wb") as temp_file:
+                temp_file.write(b"This is not a valid PCAP file")
+
+            with self.assertRaises(ValueError):
+                load_packets(temp_file_path)
+
 
 class TestGenerateReport(unittest.TestCase):
 
     def test_generate_normal_traffic_report(self):
 
         statistics = {
+            "total_packets": 5,
             "protocol_counts": {
                 "TCP": 2,
                 "UDP": 2,
@@ -231,6 +279,7 @@ class TestGenerateReport(unittest.TestCase):
     def test_generate_port_scan_report(self):
 
         statistics = {
+            "total_packets": 12,
             "protocol_counts": {
                 "TCP": 12,
                 "UDP": 0,
@@ -270,3 +319,44 @@ class TestGenerateReport(unittest.TestCase):
             self.assertIn("Source IP: 192.168.1.50", content)
             self.assertIn("Target IP: 192.168.1.5", content)
             self.assertIn("Unique Destination Ports: 12", content)
+
+    def test_generate_report_creates_missing_directory(self):
+
+        statistics = {
+            "total_packets": 1,
+            "protocol_counts": {
+                "TCP": 1,
+                "UDP": 0,
+                "ICMP": 0
+            },
+            "source_ip_counts": {
+                "192.168.1.10": 1
+            },
+            "total_bytes": 40
+        }
+
+        suspicious_activity = []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+
+            report_path = os.path.join(
+                temp_dir,
+                "new_reports",
+                "security_report.txt"
+            )
+
+            generate_report(
+                statistics,
+                suspicious_activity,
+                report_path
+            )
+
+            self.assertTrue(os.path.exists(report_path))
+
+            with open(report_path, "r") as report:
+                content = report.read()
+
+            self.assertIn(
+                "Total Packets Analysed: 1",
+                content
+            )
